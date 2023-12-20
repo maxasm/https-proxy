@@ -7,10 +7,15 @@ import (
 	"fmt"
 	"os"
 	"io"
+	"time"
+	"github.com/maxasm/https-proxy/logger"
 ) 
 
 var paraphrase = "cats"
 var certs_dir = "./.certs/"
+
+var dl = logger.DL
+var wl = logger.WL
 
 func run_cmd(prog string, args ...string) error {
 	cmd := exec.Command(prog, args...)
@@ -25,7 +30,7 @@ func run_cmd(prog string, args ...string) error {
 }
 
 func generate_ca_private_key() error {
-	out_dir := certs_dir+"ca/"
+	out_dir := certs_dir+"ca"+"/"
 	err__mkdir := os.MkdirAll(out_dir, 0777)
 	if err__mkdir != nil {
 		return err__mkdir
@@ -49,7 +54,7 @@ func generate_ca_private_key() error {
 }
 
 func generate_ca() error {
-	out_dir := certs_dir+"ca/"
+	out_dir := certs_dir+"ca"+"/"
 	err__mkdir := os.MkdirAll(out_dir, 0777)
 	if err__mkdir != nil {
 		return err__mkdir
@@ -89,8 +94,8 @@ func generate_ca() error {
 	return nil
 } 
 
-func generate_cert_private_key(domain string, id string) error {
-	out_dir := certs_dir+domain+"/"+id+"/"
+func generate_cert_private_key(domain string) error {
+	out_dir := certs_dir+domain+"/"
 
 	err__mkdir := os.MkdirAll(out_dir, 0777)
 	if err__mkdir != nil {
@@ -111,8 +116,8 @@ func generate_cert_private_key(domain string, id string) error {
 	return nil
 }
 
-func generate_csr(domain string, id string) error {
-	out_dir := certs_dir+domain+"/"+id+"/"
+func generate_csr(domain string) error {
+	out_dir := certs_dir+domain+"/"
 	
 	err__run_cmd := run_cmd(
 		"openssl",
@@ -133,8 +138,8 @@ func generate_csr(domain string, id string) error {
 	return nil
 }
 
-func generate_cert(domain string, id string) error {
-	out_dir := certs_dir+domain+"/"+id+"/"
+func generate_cert(domain string) error {
+	out_dir := certs_dir+domain+"/"
 	
 	err__run_cmd := run_cmd(
 		"openssl",
@@ -166,14 +171,26 @@ func generate_cert(domain string, id string) error {
 }
 
 
-func generate_config_file(domain string, id string) error {
-	config_file := certs_dir+domain+"/"+id+"/config.cnf" 
+func generate_config_file(domain string, is_domain_name  bool) error {
+	config_file := certs_dir+domain+"/config.cnf" 
 	f, err__open_file := os.OpenFile(config_file, os.O_RDWR|os.O_CREATE, 0777)
 	if err__open_file != nil {
 		return err__open_file
 	}
 
-	config_text := fmt.Sprintf("subjectAltName=DNS:%s", domain)
+	// NOTE:
+	// If there is a connection to a server using an IP address that's not 
+	// the IP of the proxy, the certificate will have the wrong value set for
+	// subjectAltName as the actual destination IP has already been changed using
+	// IP tables and there is no way to know what it is, as it is not set in the SNI
+	// either. So this does not work for IPs!
+	var config_text string
+	if is_domain_name {
+		config_text = fmt.Sprintf("subjectAltName=DNS:%s", domain)
+	} else {
+		config_text = fmt.Sprintf("subjectAltName=IP:%s", domain)
+	}
+
 	_, err__write_data := f.Write([]byte(config_text))
 	if err__write_data != nil {
 		return err__write_data
@@ -182,8 +199,9 @@ func generate_config_file(domain string, id string) error {
 	return nil
 }
 
-func make_cert_chain(domain string, id string) error {
-	f, err__open_file := os.OpenFile(certs_dir+domain+"/"+id+"/cert.pem", os.O_RDWR, 0777)
+func make_cert_chain(domain string) error {
+	out_dir := certs_dir+domain+"/"
+	f, err__open_file := os.OpenFile(out_dir+"cert.pem", os.O_RDWR, 0777)
 	if err__open_file != nil {
 		return err__open_file
 	}
@@ -205,7 +223,7 @@ func make_cert_chain(domain string, id string) error {
 	}
 
 	// create the full-chain file that contains both the ca and the server cert
-	fullchain, err__open_fullchain := os.OpenFile(certs_dir+domain+"/"+id+"/fullchain-cert.pem", os.O_RDWR|os.O_CREATE, 0777)
+	fullchain, err__open_fullchain := os.OpenFile(out_dir+"fullchain-cert.pem", os.O_RDWR|os.O_CREATE, 0777)
 	if err__open_fullchain != nil {
 		return err__open_fullchain
 	}
@@ -238,57 +256,93 @@ func make_cert_chain(domain string, id string) error {
 	return nil
 }
 
-// created the .cert dir
-func init_dir() error {
-	err__mkdir := os.Mkdir(".certs", 0777)
-	if err__mkdir != nil {
-		return err__mkdir
+func init_dir(domain string) error {
+	out_dir := certs_dir+domain+"/"
+	
+	// create the lock file
+	f, err__create_file := os.OpenFile(out_dir+"lock", os.O_RDWR | os.O_CREATE, 0666)
+	if err__create_file != nil {
+		return err__create_file
 	}
+
+	// get the current time
+	current_time := time.Now()
+	current_time_unix_str := current_time.Format("2006-01-02T15:04:05.000000Z07:00")
+	// TODO: The following lines might produce errors
+	f.Write([]byte(current_time_unix_str))
+	f.Close()
+
+	dl.Printf("genareted lock file for domain. %s\n", domain)
 	return nil
+} 
+
+
+func clean_up_dir(domain string) error {
+	out_dir := certs_dir+domain+"/"
+	err__remove_file := os.Remove(out_dir+"lock")
+
+	if err__remove_file != nil && os.IsNotExist(err__remove_file) {
+		wl.Printf("the lock file for domain %s does not exist. %s\n", domain, err__remove_file)
+		return nil
+	} 
+	
+	dl.Printf("deleted lock file for domain %s.\n", domain)
+	return err__remove_file
 }
 
-
 // the main funtion to generate a server side SSL/TLS certificate.
-func generate_server_cert(domain string, id string) error {
-	// err__init := init_dir()
-	// if err__init != nil {
-	// 	return err__init
-	// }
+func generate_server_cert(domain string, is_domain_name bool) error {
+	// get the lock status of this domain
+	status := get_lock_status(domain)
+
+	if status.Ok {
+		dl.Printf("certs for domain %s already exist.\n", domain)
+		return nil
+	} 
+
+	// otherwise status.Ok == false and status.GenerateNew == true
+	err__update_lock := update_lock_file(domain)
+	if err__update_lock != nil {
+		return err__update_lock
+	}
 	
-	err__get_cert_pkey := generate_cert_private_key(domain, id)
+	err__get_cert_pkey := generate_cert_private_key(domain)
 	if err__get_cert_pkey != nil {
 		return err__get_cert_pkey 
 	}
 	
 	dl.Printf("generated the cert private key for the domain: %s\n", domain)
 	
-	err__get_csr := generate_csr(domain, id) 
+	err__get_csr := generate_csr(domain) 
 	if err__get_csr != nil {
 		return err__get_csr
 	}
 	
 	dl.Printf("generated the csr for the domain: %s\n", domain)
 
-	err__generate_config := generate_config_file(domain, id)
+	err__generate_config := generate_config_file(domain, is_domain_name)
 	if err__generate_config != nil {
 		return err__generate_config 
 	}
 	
 	dl.Printf("generated config file for domain: %s\n", domain)
 	
-	err__get_cert := generate_cert(domain, id)
+	err__get_cert := generate_cert(domain)
 	if err__get_cert != nil {
 		return err__get_cert
 	}
 
 	dl.Printf("generated the cert for the domain: %s\n", domain)
 
-	err__make_cert_chain := make_cert_chain(domain, id)
+	err__make_cert_chain := make_cert_chain(domain)
 	if err__make_cert_chain != nil {
 		return err__make_cert_chain
 	}
 
 	dl.Printf("generated the certificate chain for the domain: %s\n", domain)
+
+	// TODO: handle the error
+	clean_up_dir(domain)
 	
 	return nil
 }

@@ -71,8 +71,9 @@ func update_lock_file(domain string) error {
 	_, err__stat := os.Stat(out_dir+"lock")
 	if err__stat != nil {
 		// the file does not exist, therfore create file
-		_, err__create_file := os.OpenFile(out_dir+"lock",os.O_RDWR | os.O_CREATE, 0666)
+		_, err__create_file := os.Create(out_dir+"lock")
 		if err__create_file != nil {
+			wl.Printf("error creating the file. %s\n", err__create_file)
 			return err__create_file 
 		}
 

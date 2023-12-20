@@ -301,6 +301,13 @@ func generate_server_cert(domain string, is_domain_name bool) error {
 	} 
 
 	// otherwise status.Ok == false and status.GenerateNew == true
+	// create the cert dir
+	out_dir := certs_dir+domain
+	err__mkdir := os.Mkdir(out_dir, 0777)
+	if err__mkdir != nil {
+		return err__mkdir
+	}
+	
 	err__update_lock := update_lock_file(domain)
 	if err__update_lock != nil {
 		return err__update_lock

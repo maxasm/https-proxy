@@ -48,7 +48,7 @@ func get_lock_status(domain string) LockStatus {
 		// this means that the expiry time is past the current time
 		// and this file should have already been deleted, but it hasn't
 		// which might imply that there was a problem generating the certs.
-		wl.Printf("lock filed expired, generating new certs and a new lock file\n")
+		wl.Printf("lock file expired, generating new certs and a new lock file\n")
 		return LockStatus{GenerateNew: true}
 	} 
 
@@ -76,7 +76,7 @@ func update_lock_file(domain string) error {
 			wl.Printf("error creating the file. %s\n", err__create_file)
 			return err__create_file 
 		}
-
+		dl.Printf("generated lock file for domain: %s\n", domain)
 		return nil
 	}
 

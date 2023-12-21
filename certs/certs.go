@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"io"
-	"time"
 	"github.com/maxasm/https-proxy/logger"
 ) 
 
@@ -256,27 +255,6 @@ func make_cert_chain(domain string) error {
 	return nil
 }
 
-func init_dir(domain string) error {
-	out_dir := certs_dir+domain+"/"
-	
-	// create the lock file
-	f, err__create_file := os.OpenFile(out_dir+"lock", os.O_RDWR | os.O_CREATE, 0666)
-	if err__create_file != nil {
-		return err__create_file
-	}
-
-	// get the current time
-	current_time := time.Now()
-	current_time_unix_str := current_time.Format("2006-01-02T15:04:05.000000Z07:00")
-	// TODO: The following lines might produce errors
-	f.Write([]byte(current_time_unix_str))
-	f.Close()
-
-	dl.Printf("genareted lock file for domain. %s\n", domain)
-	return nil
-} 
-
-
 func clean_up_dir(domain string) error {
 	out_dir := certs_dir+domain+"/"
 	err__remove_file := os.Remove(out_dir+"lock")
@@ -292,6 +270,11 @@ func clean_up_dir(domain string) error {
 
 // the main funtion to generate a server side SSL/TLS certificate.
 func generate_server_cert(domain string, is_domain_name bool) error {
+	// check if the CA is expired, if so generate a new CA and delete singed certs 
+	err__check_ca := check_ca()
+	if err__check_ca != nil {
+		return err__check_ca
+	}
 	// get the lock status of this domain
 	status := get_lock_status(domain)
 
@@ -305,7 +288,9 @@ func generate_server_cert(domain string, is_domain_name bool) error {
 	out_dir := certs_dir+domain
 	err__mkdir := os.Mkdir(out_dir, 0777)
 	if err__mkdir != nil {
-		return err__mkdir
+		if !os.IsExist(err__mkdir) {
+			return err__mkdir
+		}
 	}
 	
 	err__update_lock := update_lock_file(domain)

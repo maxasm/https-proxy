@@ -47,6 +47,10 @@ func handle_get_certs(client_info *tls.ClientHelloInfo) (*tls.Certificate, error
 		return nil, err__get_cert
 	}
 
+	if cert == nil {
+		wl.Printf("returned cert is nil. %s\n", err__get_cert)
+	}
+
 	return cert, nil
 }
 

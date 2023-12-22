@@ -12,7 +12,7 @@ import (
 
 // check if the cert is expired
 // returns true if the cert is expired
-func cert_expired(domain string) (bool, error) {
+func is_cert_expired(domain string) (bool, error) {
 	out_dir := certs_dir+domain+"/"
 	cert_file, err__open_cert_file := os.OpenFile(out_dir+"fullchain-cert.pem", os.O_RDONLY, 0777)
 	if err__open_cert_file != nil {
@@ -59,7 +59,7 @@ func Get_certificate_for_domain(domain string, is_domain_name bool) (*tls.Certif
 	}
 
 	// get the expiry date of the certificate
-	cert_expired, err__check_cert_expired := cert_expired(domain) 
+	cert_expired, err__check_cert_expired := is_cert_expired(domain) 
 	if err__check_cert_expired != nil {
 		return nil, err__check_cert_expired
 	}

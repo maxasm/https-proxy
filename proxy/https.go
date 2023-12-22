@@ -8,6 +8,7 @@ import (
 	"strings"
 	"errors"
 	"github.com/maxasm/https-proxy/certs"
+	"github.com/maxasm/https-proxy/conn"
 	"github.com/maxasm/https-proxy/logger"
 )
 
@@ -54,6 +55,14 @@ func handle_get_certs(client_info *tls.ClientHelloInfo) (*tls.Certificate, error
 	return cert, nil
 }
 
+func handle_proxy_connection(w http.ResponseWriter, r *http.Request) {
+	server_name := r.TLS.ServerName
+	err__intercept := conn.Intercept(r, w, server_name, true)
+	if err__intercept != nil {
+		wl.Printf("failed to intercept the conncetion to: %s\n", server_name)
+	}
+}
+
 func Start_HTTPS_Proxy(port int) error {
 	// create the TLS configuration for the HTTPS server
 	tls_config := &tls.Config{
@@ -65,11 +74,7 @@ func Start_HTTPS_Proxy(port int) error {
 		TLSConfig: tls_config,
 	}
 
-	// TODO:
-	// this is the entry point for all connections
-	// use connection infor such as domain, headers, cookies, etc
-	// to recreate the original HTTPS connection and send it to the server.
-	http.Handle("/",http.FileServer(http.Dir("./web")))
+	http.HandleFunc("/",handle_proxy_connection)
 	
 	dl.Printf("HTTPS server/proxy started on port: %d.", port)
 	err__start_server := server.ListenAndServeTLS("","")

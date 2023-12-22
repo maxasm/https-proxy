@@ -58,6 +58,7 @@ func get_lock_status(domain string) LockStatus {
 	// certs to be generated. We wait for about 500ms and call the function
 	// again recursively
 
+	dl.Printf("another connection is generating certs ... waiting for 500ms and trying again.\n")
 	time.Sleep(time.Millisecond*500)
 	return get_lock_status(domain)
 }

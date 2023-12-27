@@ -75,7 +75,6 @@ func Start_HTTPS_Proxy(port int) error {
 	}
 
 	http.HandleFunc("/",handle_proxy_connection)
-	
 	dl.Printf("HTTPS server/proxy started on port: %d.", port)
 	err__start_server := server.ListenAndServeTLS("","")
 	if err__start_server != nil {

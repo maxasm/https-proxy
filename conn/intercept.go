@@ -29,7 +29,7 @@ type RequestInfo struct {
 
 type ResponseInfo struct {
 	StatusCode    int                 `json:"statuscode,omitempty"`    // the response status code
-	Status string              `json:"statusmessage,omitempty"` // the corresponding response message
+	Status string              `json:"status,omitempty"` // the corresponding response message
 	Headers       map[string][]string `json:"headers,omitempty"`       // the response headers
 	Payload       string              `json:"payload,omitempty"`       // the response payload
 }
@@ -100,7 +100,7 @@ func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_ht
 	// set the response value for req_info
 	req_info.Response = resp_info
 
-	// send the new response infor
+	// send the new response info
 	err__send_msg := fserver.Send_WS_Message(req_info)
 	if err__send_msg != nil {
 		wl.Printf("failed to send websocket message. %s\n", err__send_msg)

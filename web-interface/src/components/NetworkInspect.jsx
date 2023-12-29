@@ -39,15 +39,24 @@ const InfoCard = ({selected_connection, request})=> {
     let content_type = headers["Content-Type"]
     let content_length = headers["Content-Length"]
 
-    function contains(str1, str2) {
-      return str1.indexOf(str2) !== -1    
+    // headers are returned as a type map[string][]string
+    function contains(headers, str) {
+      let hd
+      try {
+        hd = headers[0]
+      } catch(e) {
+        return false
+      }
+      return hd.indexOf(str) !== -1    
     }
 
     // helper function to decode base64 content
     function decode_b64() {
       let txt
       try {
-       txt = atob(request ? selected_connection.payload : selected_connection.responseinfo.payload) 
+        txt = atob(request ? selected_connection.payload : selected_connection.responseinfo.payload) 
+        // only show the first 100 characters
+        txt = txt.slice(0, 100)
       } catch(e) {
         txt = "failed to decoded base64 payload"
       }
@@ -60,7 +69,13 @@ const InfoCard = ({selected_connection, request})=> {
       }
 
       if (contains(content_type,"text/plain") || contains(content_type,"text/html") || contains(content_type,"text/css") || contains(content_type,"text/javascript") || contains(content_type,"application/json")) {
-        return <Typography> {decode_b64()} </Typography>
+        return (
+          <Typography> {decode_b64()} </Typography>
+        )
+      } else {
+        return (
+          <Typography> Content-Type is not supported for preview </Typography>
+        )
       }
     }
 
@@ -74,10 +89,7 @@ const InfoCard = ({selected_connection, request})=> {
         <Box>
           <Typography variant="h2"> Payload Preview </Typography>
           <Preview/>
-          <Box sx={{display:"flex", alignItems: "flex-end", padding: "10px"}}>
-            <Button variant="contained" sx={{marginRight: "10px"}}> Copy Payload </Button>
-            <Button variant="contained"> Donwload Payload </Button>
-          </Box>
+          <Button variant="contained"> Open Using External App </Button>
         </Box>
       </Box>
     )

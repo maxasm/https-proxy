@@ -17,7 +17,6 @@ const NetworkTable = ({network_info, set_active_connection, set_dialog_open})=> 
     set_dialog_open(true)
   }
 
-  // TODO: handle the `onClick` event
   const Rows = ()=> {
     let rows = [];
     network_info.forEach((value,key)=> {
@@ -34,7 +33,8 @@ const NetworkTable = ({network_info, set_active_connection, set_dialog_open})=> 
           <TableCell align="center">{value.method}</TableCell>
           <TableCell align="center">{value.protocol}</TableCell>
           <TableCell align="center">{server_name}</TableCell>
-          <TableCell align="center">{value.responseinfo ? value.responseinfo.status : "Pending"}</TableCell>
+          <TableCell align="center">{value.responseinfo.headers ? value.responseinfo.headers["Content-Type"] : "Pending ..."}</TableCell>
+          <TableCell align="center">{value.responseinfo.status ? value.responseinfo.status : "Pending ... "}</TableCell>
         </TableRow>
       )
     })
@@ -49,6 +49,7 @@ const NetworkTable = ({network_info, set_active_connection, set_dialog_open})=> 
             <TableCell align="center">Method</TableCell>
             <TableCell align="center">Protocol</TableCell>
             <TableCell align="center">Server Name</TableCell>
+            <TableCell align="center">Content Type</TableCell>
             <TableCell align="center">Response Code</TableCell>
           </TableRow>    
         </TableHead>

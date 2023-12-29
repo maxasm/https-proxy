@@ -63,10 +63,6 @@ const App = ()=> {
     fetch_network_info()
   },[]);
 
-  // TODO: Network info should have a `visible` field which should be toggled
-  // to make it filter the rows from the table without removing the rows
-  // completely from the array. 
-
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{"padding":"10px"}}>

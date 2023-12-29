@@ -5,12 +5,15 @@ import (
 	"github.com/maxasm/https-proxy/fserver"
 	"github.com/maxasm/https-proxy/logger"
 	"io"
+	"strconv"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/base64"
+	"golang.org/x/net/websocket"
 )
 
 var dl = logger.DL
@@ -48,12 +51,115 @@ func generate_id() string {
 	return id_str
 }
 
+// check is the http client connection is part of a WebSocket handshake
+func is_websocket_connection(r *http.Request) bool {
+	var upgrade = false
+	var websocket = false
+	
+	// check if the connection header is present
+	if hd_connection, hd_connection_ok := r.Header["Connection"]; hd_connection_ok {
+		var hd_connection_val = hd_connection[0]
+		if hd_connection_val == "Upgrade" {
+			upgrade = true
+		}
+	}
+
+	// check if the upgrade header is set to upgrade
+	if hd_upgrade, hd_upgrade_ok := r.Header["Upgrade"]; hd_upgrade_ok {
+		var hd_upgrade_val = hd_upgrade[0]
+		if hd_upgrade_val == "websocket" {
+			websocket = true
+		}
+	}
+
+	return upgrade && websocket
+}
+
+func handle_websocket_connection(r *http.Request, w http.ResponseWriter, server_name string) error {
+	dl.Printf("handle_websocket_connection() ...\n")
+	// make a websocket handshake request
+	// copy all original headers
+	var headers = make(http.Header, 0)
+
+	for a, _ := range r.Header {
+		// TODO: replace strings.Join with headers.Get()
+		headers.Set(a,r.Header.Get(a))
+	}
+
+	fmt.Printf("%s\n", headers)
+
+	// get the Location
+	parsed_origin, err__parse := url.Parse(headers.Get("Origin"))
+	if err__parse != nil {
+		return err__parse
+	}
+
+	// get the Location
+	var path = "wss://"+server_name+fmt.Sprintf("%s", r.URL)
+	var parsed_location, err__parse_location  = url.Parse(path)
+	if err__parse_location != nil {
+		return err__parse_location  
+	}  
+
+	// get the Version
+	var version = headers.Get("Sec-Websocket-Version")
+	var version_int, err__convert = strconv.Atoi(version) 
+	if err__convert != nil {
+		return err__convert
+	}
+	
+	var config = websocket.Config{
+		// Header: headers,
+		Location: parsed_location,
+		Origin: parsed_origin,
+		Version: version_int,
+	}
+	
+	fmt.Printf("making ws connection with the confing\n%s\n", config)
+
+	ws_conn_server, err__make_ws_conn := websocket.DialConfig(&config)
+	if err__make_ws_conn != nil {
+		wl.Printf("failed to initiate websocket connection. %s\n", err__make_ws_conn)
+		return err__make_ws_conn 
+	}
+
+	dl.Printf("initiated websocket connection ...\n")
+
+	var handle_websocket = func(ws_conn_client *websocket.Conn) {
+		dl.Printf("handle_websocket_connection() ... got connection\n")
+		// TODO: hadle errors!!
+		go func(){
+			// read data from server and forward it to client
+			for {
+				var data []byte
+				websocket.Message.Receive(ws_conn_server, data)
+				websocket.Message.Send(ws_conn_client, data)
+			}
+		}()
+
+		go func(){
+			// read data from client and forward it to server
+			for {
+				var data []byte
+				websocket.Message.Receive(ws_conn_client, data)
+				websocket.Message.Send(ws_conn_server,data)
+			}
+		}()
+	}
+	websocket.Handler(handle_websocket).ServeHTTP(w, r)
+	return nil
+}
+
 func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_https bool) error {
 	// check what HTTP version is being used
 	dl.Printf("intercepting the connection to: %s\n", server_name)
 
+	// TODO: check if it is websockets
+	if is_websocket_connection(r) {
+		return handle_websocket_connection(r, w, server_name)
+	}
+
 	var full_request_path = "https://"+server_name+fmt.Sprintf("%s", r.URL)
-	dl.Printf("Path: %s\n", full_request_path)
 	
 	resp,req_info, err__connect := connect(full_request_path, r)
 	

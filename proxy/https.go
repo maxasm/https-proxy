@@ -19,10 +19,7 @@ var dl = logger.DL
 var wl = logger.WL
 
 func handle_get_certs(client_info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	// print information about the destination server. SNI
 	domain := client_info.ServerName
-
-	// example of SNI is www.google.com
 	dl.Printf("got a HTTPS connection to the server-name: %s\n", domain)
 
 	// is the destination an IP or domain name
@@ -60,20 +57,11 @@ func handle_get_certs(client_info *tls.ClientHelloInfo) (*tls.Certificate, error
 func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 	// handle websocket connections
 	if websocket.IsWebSocketUpgrade(r) {
-		// use default options
 		var upgrader = websocket.Upgrader{
+			// TODO: This is not a permanent fix
 			CheckOrigin: func(r *http.Request) bool {return true},
 		}
-
-		// remove repeared headers
-		var header = r.Header.Clone()
-		header.Del("Sec-Websocket-Version")
-		header.Del("Sec-Websocket-Key")
-		header.Del("Sec-Websocket-Extensions")
-		header.Del("Connection")
-		header.Del("Upgrade")
-		header.Del("Origin")
-
+		
 		ws_client_conn, err__connect_client := upgrader.Upgrade(rw, r, nil)
 		if err__connect_client != nil {
 			dl.Printf("failed to upgrade connection to websockets. %s\n", err__connect_client)
@@ -89,13 +77,23 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 			EnableCompression: false,
 		}
 
+		// TODO: set up the headers correctly
+		// remove repeated headers
+		var header = r.Header.Clone()
+		header.Del("Sec-Websocket-Version")
+		header.Del("Sec-Websocket-Key")
+		header.Del("Sec-Websocket-Extensions")
+		header.Del("Connection")
+		header.Del("Upgrade")
+		header.Del("Origin")
+
+		// TODO: Set up the correct origin
 		ws_server_conn, _, err__connect_server := dialer.DialContext(context.TODO(), path, header)
 		if err__connect_server != nil {
 			dl.Printf("failed to connect to server websocket. %s\n", err__connect_server)
 		} else {
 			dl.Printf("connected to server websocket.\n")
 		}
-
 
 		// read messages from the client and forward them to the server
 		go func() {
@@ -159,10 +157,9 @@ func Start_HTTPS_Proxy(port int) error {
 		TLSConfig: tls_config,
 	}
 
-	// http.HandleFunc("/",handle_proxy_connection)
 	http.HandleFunc("/", handle_proxy_conn)
 
-	dl.Printf("HTTPS server/proxy started on port: %d.", port)
+	dl.Printf("HTTPS server/proxy started on port: %d", port)
 	err__start_server := server.ListenAndServeTLS("","")
 	if err__start_server != nil {
 		dl.Printf("failed to start HTTPS server on port: %d\n", port)

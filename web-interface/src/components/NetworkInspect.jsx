@@ -56,7 +56,7 @@ const InfoCard = ({selected_connection, request})=> {
       try {
         txt = atob(request ? selected_connection.payload : selected_connection.responseinfo.payload) 
         // only show the first 100 characters
-        txt = txt.slice(0, 100)
+        // txt = txt.slice(0, 100)
       } catch(e) {
         txt = "failed to decoded base64 payload"
       }
@@ -64,19 +64,7 @@ const InfoCard = ({selected_connection, request})=> {
     }
     
     function Preview() {
-      if (!content_type) {
-        return <Typography>No Content-Type stated</Typography>      
-      }
-
-      if (contains(content_type,"text/plain") || contains(content_type,"text/html") || contains(content_type,"text/css") || contains(content_type,"text/javascript") || contains(content_type,"application/json")) {
-        return (
-          <Typography> {decode_b64()} </Typography>
-        )
-      } else {
-        return (
-          <Typography> Content-Type is not supported for preview </Typography>
-        )
-      }
+        return (<Typography> <pre> {decode_b64()} </pre> </Typography>)
     }
 
     return (
@@ -89,7 +77,7 @@ const InfoCard = ({selected_connection, request})=> {
         <Box>
           <Typography variant="h2"> Payload Preview </Typography>
           <Preview/>
-          <Button variant="contained"> Open Using External App </Button>
+          <Button variant="contained" sx={{marginTop: "20px"}}> Open Using External App </Button>
         </Box>
       </Box>
     )

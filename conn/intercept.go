@@ -5,21 +5,25 @@ import (
 	"github.com/maxasm/https-proxy/fserver"
 	"github.com/maxasm/https-proxy/logger"
 	"io"
+	"os"
 	"fmt"
 	"net/http"
-	"strings"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/base64"
+	"compress/gzip"
+	"compress/flate"
+	"github.com/andybalholm/brotli"
 )
 
 var dl = logger.DL
 var wl = logger.WL
 
+// TODO: rename in JSON URL -> path
 type RequestInfo struct {
 	Method         string              `json:"method,omitempty"`       // the request method
 	Headers        map[string][]string `json:"headers,omitempty"`      // the request headers
-	Path           string              `json:"path,omitempty"`         // the complete path inluding all URL params
+	URL           string              `json:"path,omitempty"`         // the complete path inluding all URL params
 	Payload        string              `json:"payload,omitempty"`            // the payload in the request body (base64 encoded)
 	Id             string              `json:"id,omitempty"`           // unique id for this client request
 	Response       ResponseInfo        `json:"responseinfo,omitempty"` // the corresponding response to this request
@@ -48,13 +52,52 @@ func generate_id() string {
 	return id_str
 }
 
+func decode_br(enc_data []byte) []byte {
+	var data_reader = bytes.NewReader(enc_data)
+	var deflate_reader = brotli.NewReader(data_reader)
+	
+	var decoded_data = bytes.Buffer{}
+	_, err__copy := io.Copy(&decoded_data, deflate_reader)
+	if err__copy != nil {
+		wl.Printf("failed to copy data from brtoli decoded data. %s\n", err__copy)
+		return enc_data
+	}
+	return decoded_data.Bytes()
+}
+
+func decode_gzip(enc_data []byte) []byte {
+	var data_reader = bytes.NewReader(enc_data)
+	var gzip_reader, err__gzip_reader = gzip.NewReader(data_reader)
+	if err__gzip_reader != nil {
+		wl.Printf("failed to create a new gzip Reader. %s\n", err__gzip_reader)
+		return enc_data
+	}
+	var decoded_data = bytes.Buffer{}
+	_, err__copy := io.Copy(&decoded_data, gzip_reader)
+	if err__copy != nil {
+		wl.Printf("failed to copy gzip decoded data. %s\n", err__copy)
+		return enc_data
+	}
+	return decoded_data.Bytes()
+}
+
+func decode_flate(enc_data []byte) []byte {
+	var data_reader = bytes.NewReader(enc_data)
+	var deflate_reader = flate.NewReader(data_reader)
+	var decoded_data = bytes.Buffer{}
+	_, err__copy := io.Copy(&decoded_data, deflate_reader)
+	if err__copy != nil {
+		wl.Printf("failed to copy data from flate decoded data. %s\n", err__copy)
+		return enc_data
+	}
+	return decoded_data.Bytes()
+}
+
 func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_https bool) error {
 	// check what HTTP version is being used
 	dl.Printf("intercepting the connection to: %s\n", server_name)
-
-	var full_request_path = "https://"+server_name+fmt.Sprintf("%s", r.URL)
-	
-	resp,req_info, err__connect := connect(full_request_path, r)
+	var url = "https://"+server_name+fmt.Sprintf("%s", r.URL)
+	resp,req_info, err__connect := connect(url, r)
 	
 	if err__connect != nil {
 		wl.Printf("failed to connect to server: %s\n", err__connect)
@@ -64,14 +107,16 @@ func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_ht
 	}
 
 	// copy the response headers
-	for a, b := range resp.Header {
-		w.Header().Set(a, strings.Join(b, ","))
+	for header, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(header, value)
+		}
 	}
-	
+
 	// set the response Status
 	w.WriteHeader(resp.StatusCode)
 
-	// buffer to read from the response Body -> for logging
+	// buffer to read from the response Body
 	buffer := bytes.Buffer{}
 
 	// read all data from the response into the buffer
@@ -85,8 +130,30 @@ func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_ht
 		return err__copy_2
 	}
 
+	// decode the data based on the Content-Encoding header
+	var payload_data = buffer.Bytes()
+	var content_encoding_alg = resp.Header.Values("Content-Encoding")
+	if len(content_encoding_alg) != 0 {
+		if len(content_encoding_alg) > 1 {
+			// TODO: Handle more than one encoding schemes
+			wl.Printf("more than one encoding schemes using used.\n")
+			os.Exit(1)
+		}
+
+		var encoding_alg = content_encoding_alg[0] 
+		switch encoding_alg {
+			case "br":
+				payload_data = decode_br(payload_data)
+			case "gzip":
+				payload_data = decode_gzip(payload_data)
+			case "deflate":
+				payload_data = decode_flate(payload_data)
+			default:
+				wl.Printf("Encoding %s not supported. %s\n", encoding_alg)
+		}
+	}
 	// encode the payload using base64
-	payload_b64 := base64.StdEncoding.EncodeToString(buffer.Bytes())
+	var payload_b64 = base64.StdEncoding.EncodeToString(payload_data)
 
 	// send the logging data
 	var resp_info = ResponseInfo{
@@ -107,12 +174,8 @@ func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_ht
 	return nil
 }
 
-func connect(fpath string, r *http.Request) (*http.Response, *RequestInfo, error) {
-	// copy the original request
-	req_method := r.Method
-	// the reqeust body if the method is a POST request
+func connect(url string, r *http.Request) (*http.Response, *RequestInfo, error) {
 	buffer := bytes.Buffer{}
-
 	// copy the request body
 	_, err__copy_body := io.Copy(&buffer, r.Body)
 	if err__copy_body != nil {
@@ -121,15 +184,16 @@ func connect(fpath string, r *http.Request) (*http.Response, *RequestInfo, error
 
 	// NOTE: You can set up TLS config here
 	client := http.Client{}
-	req, err__make_req := http.NewRequest(req_method, fpath, bytes.NewBuffer(buffer.Bytes()))
+	req, err__make_req := http.NewRequest(r.Method, url, bytes.NewReader(buffer.Bytes()))
 	if err__make_req != nil {
 		return nil,nil, err__make_req
 	}
 
-	// TODO: Do headers use `,` or `;` as a delimeter
 	// set the headers for the new request
-	for a, b := range r.Header {
-		req.Header.Set(a, strings.Join(b, ","))
+	for header, values := range r.Header {
+		for _, value := range values {
+			req.Header.Add(header, value)
+		}
 	}
 
 	resp, err__get_resp := client.Do(req)
@@ -142,11 +206,12 @@ func connect(fpath string, r *http.Request) (*http.Response, *RequestInfo, error
 
 	// create a new ID for the connection
 	id := generate_id()
-
+	
+	dl.Printf("Access-Control-Allow-Origin header for %s is: %s\n", url, resp.Header.Get("Access-Control-Allow-Origin"))
 	// send request information for logging
 	var req_info = RequestInfo{
 		Method: r.Method,
-		Path: fpath,
+		URL: url,
 		Headers: r.Header.Clone(),
 		ConnectionType: "http",
 		Payload: payload_b64,
@@ -161,28 +226,3 @@ func connect(fpath string, r *http.Request) (*http.Response, *RequestInfo, error
 
 	return resp, &req_info, nil
 }
-
-// func handleWebsocket(wc *websocket.Conn) {
-	
-// }
-
-// type CustomHandler struct {
-// 	cf func(wc *websocket.Conn)
-// }
-
-// func (ch CustomHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-// 	// pass it down to websocket.Handler(cf)
-// 	if headers == websocket {
-// 		websocket.Handler(ch.cf).ServeHttp(w,r)
-// 	} else {
-// 		// normal Web Handler
-// 	}
-// } 
-
-// func GetCustomHandler(cf func(wc *websocket.Conn)) Handler {
-// 	return CustomHandler{
-// 		cf: cf,
-// 	}
-// }
-
-// mux.Handle("/", GetCustomHandler(handleWebsocket))

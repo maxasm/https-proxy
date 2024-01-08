@@ -1,10 +1,5 @@
 package main
 
-import (
-	"github.com/maxasm/https-proxy/proxy"
-	"github.com/maxasm/https-proxy/fserver"
-)
-
 // TODO:
 // 0. Investigate why I am getting the forbidden error. This is what is causing the CORS errors + other errors
 // 1. handle websocket connections (new feature) + instagram bad handshake (debug)
@@ -18,12 +13,6 @@ import (
 // 9. Fix panic when there is no connection to the internet.
 
 
-// TODO: New List
-// 1. Investigate Twitter, YouTube, ClaudeAI and Netflix using curl
-
 func main() {
-	go func(){
-		fserver.Start_server()
-	}()
-	proxy.Start_HTTPS_Proxy(8443)
+	Start_HTTPS_Proxy(8443)
 }

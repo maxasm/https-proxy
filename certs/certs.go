@@ -7,14 +7,10 @@ import (
 	"fmt"
 	"os"
 	"io"
-	"github.com/maxasm/https-proxy/logger"
 ) 
 
 var paraphrase = "cats"
 var certs_dir = "./.certs/"
-
-var dl = logger.DL
-var wl = logger.WL
 
 func run_cmd(prog string, args ...string) error {
 	cmd := exec.Command(prog, args...)

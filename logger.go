@@ -1,4 +1,4 @@
-package logger
+package main
 
 import (
 	"log"
@@ -18,5 +18,5 @@ func (wl *DebugLogger) Write(buffer []byte) (int, error) {
 	return fmt.Fprintf(os.Stdout, "\033[92m%s\033[0m", string(buffer))
 }
 
-var DL *log.Logger = log.New(&DebugLogger{}, "[DEBUG] :", log.Lshortfile)
-var WL *log.Logger = log.New(&WarningLogger{}, "[WARNING] :", log.Lshortfile)
+var dl *log.Logger = log.New(&DebugLogger{}, "[DEBUG] :", log.Lshortfile)
+var wl *log.Logger = log.New(&WarningLogger{}, "[WARNING] :", log.Lshortfile)

@@ -1,4 +1,4 @@
-package proxy
+package main
 
 import (
 	"net/http"
@@ -9,18 +9,12 @@ import (
 	"errors"
 	"context"
 	"github.com/maxasm/https-proxy/certs"
-	"github.com/maxasm/https-proxy/conn"
-	"github.com/maxasm/https-proxy/logger"
 	"github.com/gorilla/websocket"
 )
 
-
-var dl = logger.DL
-var wl = logger.WL
-
 func handle_get_certs(client_info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	domain := client_info.ServerName
-	dl.Printf("got a HTTPS connection to the server-name: %s\n", domain)
+	// dl.Printf("got a HTTPS connection to the server-name: %s\n", domain)
 
 	// is the destination an IP or domain name
 	// used to configure subjectAlternativeName to use either IP or DNS
@@ -72,7 +66,6 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 		// connect to the server
 		var path = "wss://"+r.TLS.ServerName+fmt.Sprintf("%s", r.URL)
 
-		// use default settings
 		var dialer = websocket.Dialer{
 			EnableCompression: false,
 		}
@@ -87,7 +80,6 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 		header.Del("Upgrade")
 		header.Del("Origin")
 
-		// TODO: Set up the correct origin
 		ws_server_conn, _, err__connect_server := dialer.DialContext(context.TODO(), path, header)
 		if err__connect_server != nil {
 			dl.Printf("failed to connect to server websocket. %s\n", err__connect_server)
@@ -104,15 +96,11 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				dl.Printf("read %d bytes from client websocket connection.\n", len(msg))
-
 				err__send_msg := ws_server_conn.WriteMessage(m_type, msg)
 				if err__send_msg != nil {
 					wl.Printf("failed to write message to server. %s\n", err__send_msg)
 					return
 				}
-
-				dl.Printf("sent %d bytes to server websocket connection.\n", len(msg))
 			}
 		}()
 
@@ -124,15 +112,11 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			dl.Printf("read %d bytes from server websocket connection.\n", len(msg))
-
 			err__send_msg := ws_client_conn.WriteMessage(m_type, msg)
 			if err__send_msg != nil {
 				wl.Printf("failed to send message to client websocket connection. %s\n", err__send_msg)
 				return
 			}
-
-			dl.Printf("sent %d bytes to client websocket connection.\n", len(msg))
 		}
 
 		return
@@ -140,7 +124,7 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 
 	// run the proxy
 	server_name := r.TLS.ServerName
-	err__intercept := conn.Intercept(r, rw, server_name, true)
+	err__intercept := Intercept(r, rw, server_name, true)
 	if err__intercept != nil {
 		wl.Printf("failed to intercept the conncetion to: %s. %s\n", server_name, err__intercept)
 	}
@@ -150,6 +134,11 @@ func Start_HTTPS_Proxy(port int) error {
 	// create the TLS configuration for the HTTPS server
 	tls_config := &tls.Config{
 		GetCertificate: handle_get_certs,
+		GetConfigForClient: func(ch *tls.ClientHelloInfo) (*tls.Config, error) {
+			// dl.Printf("** ClientHelloInfo **\n")
+			// fmt.Printf("%s\n", *ch)
+			return nil, nil
+		},
 	}
 	
 	server := http.Server{

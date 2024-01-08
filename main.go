@@ -14,5 +14,10 @@ package main
 
 
 func main() {
-	Start_HTTPS_Proxy(8443)
+	if client_attached {
+		go func() {
+			start_interface_server(8444)
+		}()
+	}
+	start_HTTPS_proxy(8443)
 }

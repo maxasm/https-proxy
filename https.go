@@ -124,13 +124,13 @@ func handle_proxy_conn(rw http.ResponseWriter, r *http.Request) {
 
 	// run the proxy
 	server_name := r.TLS.ServerName
-	err__intercept := Intercept(r, rw, server_name, true)
+	err__intercept := intercept(r, rw, server_name, true)
 	if err__intercept != nil {
 		wl.Printf("failed to intercept the conncetion to: %s. %s\n", server_name, err__intercept)
 	}
 }
 
-func Start_HTTPS_Proxy(port int) error {
+func start_HTTPS_proxy(port int) error {
 	// create the TLS configuration for the HTTPS server
 	tls_config := &tls.Config{
 		GetCertificate: handle_get_certs,

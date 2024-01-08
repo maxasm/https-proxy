@@ -47,7 +47,7 @@ const App = ()=> {
       websocket.onmessage = function(event) {
         let data = event.data
         let json_data = JSON.parse(data)
-        // console.log(json_data)
+        console.log(json_data)
         set_network_info(()=> {
           let id = json_data.id
           let updated_map = network_info.set(id, json_data)

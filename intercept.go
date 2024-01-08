@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 	"net/url"
+	"bytes"
 	"golang.org/x/net/http2"
 	"bufio"
 	"time"
@@ -17,14 +18,50 @@ import (
 var client_connections = make(map[string]*http2.ClientConn)
 var rwMutex = sync.RWMutex{}
 
-func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_https bool) error {
+type BufferCloser struct {
+	bf *bytes.Buffer
+}
+
+func (bc *BufferCloser) Read(buffer []byte) (int, error) {
+	return bc.bf.Read(buffer)
+}
+// close does nothing
+func (bc *BufferCloser) Close() error { return nil }
+
+func intercept(r *http.Request, w http.ResponseWriter, server_name string, is_https bool) error {
 	// check what HTTP version is being used
 	req_url, err__parse_url := url.Parse("https://"+server_name+fmt.Sprintf("%s", r.URL))
 	if err__parse_url != nil {
 		return err__parse_url
 	}
 
-	// dl.Printf("connecting to Proto: %s URL: %s\n", r.Proto, req_url)
+	// copy all data from the request into a buffer
+	var req_buffer = bytes.Buffer{}
+	_, err__cp_req := io.Copy(&req_buffer, r.Body)
+	if err__cp_req != nil {
+		return err__cp_req
+	}
+
+	var request_info *RequestInfo = nil
+	// send log to client
+	if client_attached {
+		request_info = &RequestInfo {
+			Method: r.Method,
+			Headers: r.Header.Clone(),
+			URL: fmt.Sprintf("%s", req_url),
+			Id: generate_id(),
+			Protocol: r.Proto,
+			Payload: string(req_buffer.Bytes()),
+		}
+		err__send_msg := send_websocket_msg(request_info)
+		if err__send_msg != nil {
+			wl.Printf("failed to send websocket message. %s\n", err__send_msg)
+			return err__send_msg
+		}
+	}
+	
+	var bf_closer = BufferCloser{bytes.NewBuffer(req_buffer.Bytes())}
+	r.Body = &bf_closer
 	// update the request url
 	(*r).URL = req_url
 	resp, err__connect := connect(server_name, r)
@@ -37,25 +74,46 @@ func Intercept(r *http.Request, w http.ResponseWriter, server_name string, is_ht
 		return err__connect
 	}
 
+	var resp_buffer = bytes.Buffer{}
+	_, err__cp_2 := io.Copy(&resp_buffer, resp.Body)
+	if err__cp_2 != nil {
+		return err__cp_2
+	}
+	// close the response body
+	resp.Body.Close()
+	// send log to client
+	if client_attached {
+		var response_info = ResponseInfo {
+			StatusCode: resp.StatusCode,
+			Status: resp.Status, 
+			Headers: resp.Header.Clone(),
+			Payload: string(resp_buffer.Bytes()),
+		}
+		request_info.Response = response_info
+		err__send_msg := send_websocket_msg(request_info)
+		if err__send_msg != nil {
+			wl.Printf("failed to send websocket message. %s\n", err__send_msg)
+			return err__send_msg
+		}
+	}
+
 	// copy the response headers
 	for header, values := range resp.Header {
 		for _, value := range values {
 			w.Header().Add(header, value)
 		}
 	}
+
 	// set the response Status
 	w.WriteHeader(resp.StatusCode)
 	// read all data from the from the resp to the original response
-	_, err__copy := io.Copy(w, resp.Body)
+	_, err__copy := io.Copy(w, &resp_buffer)
 	if err__copy != nil {
 		return err__copy
 	}
-	// TODO: How to read trailer headers after reading body
-	resp.Body.Close()
 	return nil
 }
 
-// TODO: Should you manually close the TLS Conn
 func connect(server_name string, r *http.Request) (*http.Response, error) {
 		// check if the cached client connection is still open
 		rwMutex.RLock()

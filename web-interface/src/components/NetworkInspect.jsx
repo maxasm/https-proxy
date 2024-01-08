@@ -23,7 +23,7 @@ const InfoCard = ({selected_connection, request})=> {
     }
   }
 
-  let url = new URL(selected_connection.path)
+  let url = new URL(selected_connection.url)
 
   function Headers() {
     let headers = request ? selected_connection.headers : selected_connection.responseinfo.headers

@@ -20,7 +20,7 @@ const NetworkTable = ({network_info, set_active_connection, set_dialog_open})=> 
   const Rows = ()=> {
     let rows = [];
     network_info.forEach((value,key)=> {
-      let url = new URL(value.path)
+      let url = new URL(value.url)
       let server_name = url.host
 
       function handle_on_row_click() {
